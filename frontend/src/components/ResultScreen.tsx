@@ -1,5 +1,6 @@
 import { getRank } from '../game/logic';
 import type { QuizState } from '../game/types';
+import { Leaderboard } from './Leaderboard';
 
 interface ResultScreenProps {
   state: QuizState;
@@ -43,7 +44,9 @@ export function ResultScreen({ state, isNewBest, onPlayAgain }: ResultScreenProp
         </button>
       </div>
 
-      <h3 className="results__review-title">Corrections &amp; clarifications</h3>
+      <Leaderboard score={score} correct={correct} />
+
+      <h3 className="section-title">Corrections &amp; clarifications</h3>
       <ol className="review">
         {answers.map(({ question, correct: right }) => (
           <li key={question.id} className="review__item">

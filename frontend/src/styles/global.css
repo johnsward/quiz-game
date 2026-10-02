@@ -537,7 +537,7 @@ kbd {
   margin-block: 1rem 2.5rem;
 }
 
-.results__review-title {
+.section-title {
   font-family: var(--font-display);
   font-size: 0.875rem;
   font-weight: 800;
@@ -545,6 +545,108 @@ kbd {
   text-transform: uppercase;
   padding-bottom: 0.5rem;
   border-bottom: 3px solid var(--ink);
+}
+
+/* ------------------------------------------------------------------
+   Leaderboard
+   ------------------------------------------------------------------ */
+.leaderboard {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+.leaderboard__note {
+  color: var(--ink-soft);
+}
+
+.leaderboard__note strong {
+  color: var(--ink);
+}
+
+.byline {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.byline__label {
+  font-weight: 600;
+}
+
+.byline__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.byline__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.5rem 0.875rem;
+  border: 2px solid var(--ink);
+  border-radius: 2px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+}
+
+.byline__input::placeholder {
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
+
+.byline .button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+.byline__error {
+  color: var(--fake);
+  font-weight: 600;
+}
+
+.standings {
+  list-style: none;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.standings__row {
+  display: grid;
+  grid-template-columns: 2rem 1fr auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.625rem 0.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.standings__row[data-mine] {
+  background: var(--paper-deep);
+  box-shadow: inset 4px 0 0 var(--ink);
+}
+
+.standings__row--gap {
+  margin-top: 1rem;
+  border-top: 1px dashed var(--rule);
+}
+
+.standings__rank {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+.standings__name {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  overflow-wrap: anywhere;
+}
+
+.standings__score {
+  font-family: var(--font-display);
+  font-weight: 800;
 }
 
 .review {
