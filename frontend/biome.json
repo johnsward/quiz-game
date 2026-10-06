@@ -1,0 +1,15 @@
+{
+  "$schema": "https://biomejs.dev/schemas/latest/schema.json",
+  "formatter": { "enabled": false },
+  "css": { "linter": { "enabled": false } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "a11y": { "noAutofocus": "warn", "useSemanticElements": "warn" },
+      "style": { "noNonNullAssertion": "warn" },
+      "suspicious": { "noArrayIndexKey": "warn" },
+      "correctness": { "useExhaustiveDependencies": "warn" }
+    }
+  },
+  "files": { "includes": ["src/**/*.ts", "src/**/*.tsx"] }
+}

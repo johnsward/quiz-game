@@ -4,5 +4,15 @@ dist
 .DS_Store
 coverage
 .claude
+package-lock.json
 
 .env
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+secrets.auto.tfvars
+*.hcl

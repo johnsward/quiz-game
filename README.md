@@ -139,3 +139,37 @@ Add an entry to `frontend/src/data/questions.ts`:
   explanation: 'The real story, shown after the player answers.',
 }
 ```
+
+## DevOps pipeline (dev → test → prod)
+
+Three environments run locally in Docker, provisioned by Terraform and deployed by GitHub Actions on a self-hosted runner. See [docs/architecture.md](docs/architecture.md).
+
+| Env  | Branch | URL                   | Gate                    |
+| ---- | ------ | --------------------- | ----------------------- |
+| dev  | `dev`  | http://localhost:8081 | auto                    |
+| test | `test` | http://localhost:8082 | auto + integration test |
+| prod | `main` | http://localhost:8080 | manual approval         |
+
+### One-time setup
+1. Install Docker and Terraform >= 1.10.
+2. Start the state backend: see [infra/bootstrap/README.md](infra/bootstrap/README.md).
+3. GitHub (manual): create Environments `dev`, `test`, `prod` (prod: required reviewers); add secrets `TFSTATE_ACCESS_KEY`, `TFSTATE_SECRET_KEY`, `DB_PASSWORD` per environment; enable branch protection on `dev`/`test`/`main` requiring the `ci-ok` check; enable Dependabot, secret scanning and code scanning.
+4. Register a self-hosted runner on this machine with label `quiz-deploy` (Settings → Actions → Runners). It has Docker socket access, so only protected-branch pushes run on it; disable fork PR workflows.
+
+### Deploy manually (without CI)
+```bash
+export AWS_ACCESS_KEY_ID=tfstate AWS_SECRET_ACCESS_KEY=<minio-password>
+export TF_VAR_db_password=<password>
+cd infra
+terraform init -reconfigure -backend-config="key=dev/terraform.tfstate"
+terraform apply -var-file=envs/dev.tfvars -var frontend_image=ghcr.io/<owner>/quiz-game/frontend:<sha> \
+                -var backend_image=ghcr.io/<owner>/quiz-game/backend:<sha>
+../scripts/smoke-test.sh http://localhost:8081
+```
+Frontend and backend images are separate variables, so either can be promoted independently. Rollback = apply again with the previous tag.
+
+### Quality & security automation
+Biome lint, typecheck, coverage, Trivy image scan, CodeQL, gitleaks, `npm audit`, tflint, Checkov, Dependabot.
+
+### Terraform layout
+One root configuration in `infra/` serves every environment. Per-environment values live in `infra/envs/<env>.tfvars` (name and host port); the state key is passed at `init` (`-backend-config="key=<env>/terraform.tfstate"`). Adding an environment = one new `.tfvars` file. The three containers are defined once in `locals.services` and created by a single `for_each` over `infra/modules/service`.

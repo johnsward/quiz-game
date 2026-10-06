@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, test, main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.f.outputs.frontend }}
+      backend: ${{ steps.f.outputs.backend }}
+      infra: ${{ steps.f.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            frontend: ['frontend/**']
+            backend: ['backend/**']
+            infra: ['infra/**']
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run build
+      - name: Build image (no push)
+        run: docker build -t quiz-frontend:ci .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: quiz-frontend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: quiz, POSTGRES_PASSWORD: quiz, POSTGRES_DB: quiz_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U quiz -d quiz_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      # Enables backend/src/postgresRepository.test.ts (wipes `scores`; CI DB is throwaway).
+      TEST_DATABASE_URL: postgres://quiz:quiz@localhost:5432/quiz_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: backend/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run build
+      - name: Build image (no push)
+        run: docker build -t quiz-backend:ci .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: quiz-backend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.12.2 }
+      - run: terraform fmt -check -recursive infra
+      - name: Validate
+        run: |
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra validate
+      - uses: terraform-linters/setup-tflint@v4
+      - run: |
+          tflint --init
+          tflint --recursive
+        working-directory: infra
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra
+          framework: terraform
+          soft_fail: true   # report findings; tighten once baseline is clean
+      # `terraform plan` needs the local Docker daemon + MinIO, so it runs in the
+      # deploy workflow on the self-hosted runner (see deploy.yml "plan" step).
+
+  # Single required status check for branch protection.
+  ci-ok:
+    if: always()
+    needs: [frontend, backend, infra]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ toJSON(needs) }}' | grep -Eq '"result": "(failure|cancelled)"'; then exit 1; fi
