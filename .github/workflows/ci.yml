@@ -20,15 +20,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          # The lockfile isn't at the repo root, so tell the cache where it is.
           cache-dependency-path: backend/package-lock.json
 
-      # Installs exactly what's in the lockfile, and fails if it's out of sync with package.json.
       - run: npm ci
 
-      # Fastest checks first, so a typo fails in seconds instead of after the tests.
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      # Catches problems tests don't, e.g. tsconfig.build.json excluding a file the server needs.
       - run: npm run build
