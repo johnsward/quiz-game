@@ -8,9 +8,9 @@ import { useQuiz } from './game/useQuiz';
 
 export default function App() {
   const { state, start, answer, next } = useQuiz();
-  const [bestScore, setBestScore] = useState(loadBestScore);
   // The best score as it was when this game began, so the results screen knows if it was beaten.
-  const [bestAtStart, setBestAtStart] = useState(bestScore);
+  const [bestAtStart, setBestAtStart] = useState(loadBestScore);
+  const bestScore = state.phase === 'finished' ? Math.max(bestAtStart, state.score) : bestAtStart;
 
   function startGame() {
     setBestAtStart(bestScore);
@@ -18,11 +18,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (state.phase === 'finished' && state.score > bestScore) {
-      setBestScore(state.score);
-      saveBestScore(state.score);
-    }
-  }, [state.phase, state.score, bestScore]);
+    if (state.phase === 'finished' && state.score > bestAtStart) saveBestScore(state.score);
+  }, [state.phase, state.score, bestAtStart]);
 
   const dateline =
     state.phase === 'playing'

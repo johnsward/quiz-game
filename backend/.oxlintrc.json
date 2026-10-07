@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "node", "promise", "vitest", "import"],
+  "env": { "node": true, "es2022": true },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "request.**.expect"] }],
+    "import/no-named-as-default-member": "off"
+  },
+  "ignorePatterns": ["dist"]
+}

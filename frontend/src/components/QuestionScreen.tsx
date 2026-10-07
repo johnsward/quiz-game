@@ -18,7 +18,7 @@ export function QuestionScreen({ state, onAnswer, onNext }: QuestionScreenProps)
   const claimRef = useRef<HTMLHeadingElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
 
-  // Move focus to the new claim, then to "Next" once it's answered.
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies
   useEffect(() => claimRef.current?.focus(), [index]);
   useEffect(() => {
     if (answer) nextRef.current?.focus();
