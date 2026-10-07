@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "jsx-a11y", "vitest", "import"],
+  "env": { "browser": true, "es2022": true },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/react-in-jsx-scope": "off",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }],
+    // Focus is moved on purpose so the game can be played from the keyboard alone.
+    "jsx-a11y/no-autofocus": "off",
+    // Flags "nickname", which is a valid autocomplete token.
+    "jsx-a11y/autocomplete-valid": "off",
+    // Suggests <output>/<fieldset>, which don't fit a status note or a pair of buttons.
+    "jsx-a11y/prefer-tag-over-role": "off"
+  },
+  "ignorePatterns": ["dist"]
+}

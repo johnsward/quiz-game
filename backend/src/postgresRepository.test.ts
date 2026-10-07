@@ -44,7 +44,7 @@ describe.skipIf(!url)('PostgresScoreRepository (integration)', () => {
   });
 
   it('enforces name length in the database too', async () => {
-    await expect(repo.add({ name: 'x'.repeat(25), score: 0, correct: 0 })).rejects.toThrow();
+    await expect(repo.add({ name: 'x'.repeat(25), score: 0, correct: 0 })).rejects.toThrow(/check constraint/);
   });
 
   it('answers pings', async () => {
