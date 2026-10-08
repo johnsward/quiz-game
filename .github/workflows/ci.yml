@@ -16,6 +16,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      migrations: ${{ steps.filter.outputs.migrations }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -29,6 +30,10 @@ jobs:
             frontend:
               - *workflow
               - frontend/**
+            migrations:
+              - *workflow
+              - backend/migrations/**
+              - backend/src/migrate.ts
 
   backend:
     needs: changes
@@ -91,8 +96,67 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  migration-compatible:
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    env:
+      BASE_REF: origin/${{ github.base_ref }}
+      DATABASE_URL: postgres://quiz:quiz@localhost:5432/quiz
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: quiz
+          POSTGRES_PASSWORD: quiz
+          POSTGRES_DB: quiz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U quiz -d quiz"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Released migrations are unchanged
+        run: |
+          changed=$(git diff --name-only --diff-filter=MDR "$BASE_REF"...HEAD -- backend/migrations)
+          if [ -n "$changed" ]; then
+            echo "::error::Released migrations must not be modified, renamed or deleted:"
+            echo "$changed"
+            exit 1
+          fi
+
+      - name: Check out the previous release
+        run: git worktree add previous "$BASE_REF"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            previous/backend/package-lock.json
+
+      - name: Apply this PR's migrations
+        working-directory: backend
+        run: |
+          npm ci
+          npm run migrate
+
+      - name: Run the previous release's tests against the new schema
+        working-directory: previous/backend
+        env:
+          TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          npm ci
+          npm test
+
   ci-ok:
-    needs: [changes, backend, frontend]
+    needs: [changes, backend, frontend, migration-compatible]
     if: always()
     runs-on: ubuntu-latest
     steps:
