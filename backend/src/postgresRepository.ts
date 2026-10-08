@@ -30,7 +30,7 @@ export class PostgresScoreRepository implements ScoreRepository {
 
   async add({ name, score, correct }: NewScore): Promise<ScoreEntry> {
     const { rows } = await this.pool.query<ScoreRow>(
-      `INSERT INTO scores (name, score, correct) VALUES ($1, $2, $3) RETURNING ${COLUMNS}`,
+            `INSERT INTO scores (name, score, correct, country) VALUES ($1, $2, $3, 'SE') RETURNING ${COLUMNS}`,
       [name, score, correct],
     );
     return toEntry(rows[0]);
