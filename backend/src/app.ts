@@ -25,7 +25,8 @@ export function createApp(repo: ScoreRepository, options: AppOptions = {}) {
 
   const api = express.Router();
 
-  // api
+  const unused = 1;
+
   api.get('/health', async (_req, res) => {
     try {
       await repo.ping();
