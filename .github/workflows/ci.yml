@@ -155,8 +155,22 @@ jobs:
           npm ci
           npm test
 
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Scan this PR's commits for secrets
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: >-
+          docker run --rm -v "$PWD":/repo zricethezav/gitleaks:v8.30.1
+          git /repo --log-opts="$BASE_REF..HEAD" --redact --verbose
+
   ci-ok:
-    needs: [changes, backend, frontend, migration-compatible]
+    needs: [changes, backend, frontend, migration-compatible, secrets]
     if: always()
     runs-on: ubuntu-latest
     steps:
