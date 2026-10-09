@@ -178,8 +178,35 @@ jobs:
         with:
           fail-on-severity: high
 
+  images:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TRIVY: >-
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.75.0
+        image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build backend image
+        if: needs.changes.outputs.backend == 'true'
+        run: docker build -t quiz-backend:ci backend
+
+      - name: Scan backend image
+        if: needs.changes.outputs.backend == 'true'
+        run: $TRIVY quiz-backend:ci
+
+      - name: Build frontend image
+        if: needs.changes.outputs.frontend == 'true'
+        run: docker build -t quiz-frontend:ci frontend
+
+      - name: Scan frontend image
+        if: needs.changes.outputs.frontend == 'true'
+        run: $TRIVY quiz-frontend:ci
+
   ci-ok:
-    needs: [changes, backend, frontend, migration-compatible, secrets, dependencies]
+    needs: [changes, backend, frontend, migration-compatible, secrets, dependencies, images]
     if: always()
     runs-on: ubuntu-latest
     steps:
