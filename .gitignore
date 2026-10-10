@@ -6,3 +6,15 @@ coverage
 .claude
 
 .env
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+secrets.auto.tfvars
+*.hcl
+
+# Self-hosted runner state
+infra/runner/work

@@ -1,0 +1,116 @@
+name: Teardown
+
+# Manually shuts down an environment (or all of them) with terraform destroy.
+# By default it removes the containers and the network but KEEPS the database
+# volume (the data); tick delete_data to remove the volume as well.
+# Run it from Actions -> Teardown -> Run workflow. prod still asks for approval
+# through its GitHub Environment.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to shut down
+        type: choice
+        options: [dev, test, prod, all]
+        default: dev
+      delete_data:
+        description: Also delete the database volumes (all data is lost)
+        type: boolean
+        default: false
+      remove_state_backend:
+        description: "Also remove the MinIO state backend and its data (only with 'all'; the Terraform state of kept volumes is lost)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.pick.outputs.envs }}
+    steps:
+      - id: pick
+        env:
+          CHOICE: ${{ inputs.environment }}
+        run: |
+          if [ "$CHOICE" = "all" ]; then envs='["dev","test","prod"]'; else envs="[\"$CHOICE\"]"; fi
+          echo "envs=$envs" >> "$GITHUB_OUTPUT"
+          echo "Shutting down: $envs" >> "$GITHUB_STEP_SUMMARY"
+
+  destroy:
+    needs: select
+    runs-on: [self-hosted, quiz-deploy]
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        env: ${{ fromJSON(needs.select.outputs.envs) }}
+    environment: ${{ matrix.env }}
+    # Same queue as the deploy workflow, so a teardown never runs during a deploy.
+    concurrency:
+      group: deploy-${{ matrix.env == 'prod' && 'main' || matrix.env }}
+      cancel-in-progress: false
+    env:
+      TF_ENV: ${{ matrix.env }}
+      MINIO_ENDPOINT: http://host.docker.internal:9000
+      AWS_ACCESS_KEY_ID: ${{ secrets.TFSTATE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TFSTATE_SECRET_KEY }}
+      # destroy needs values for the required variables, but does not use them
+      TF_VAR_db_password: unused
+      TF_VAR_frontend_image: unused
+      TF_VAR_backend_image: unused
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v4
+        with: { terraform_version: 1.12.2 }
+
+      - name: Start state backend (MinIO)
+        id: minio
+        run: |
+          if ! docker inspect quiz-tfstate-minio >/dev/null 2>&1; then
+            echo "::warning::No MinIO state backend exists, so nothing was deployed by the pipeline. Nothing to destroy."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          docker start quiz-tfstate-minio >/dev/null
+          for i in $(seq 1 30); do
+            curl -sf "${MINIO_ENDPOINT}/minio/health/ready" && break; sleep 1
+          done
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform destroy
+        if: steps.minio.outputs.found == 'true'
+        working-directory: infra
+        run: |
+          terraform init -input=false -reconfigure \
+            -backend-config="key=${TF_ENV}/terraform.tfstate" \
+            -backend-config="endpoints={s3=\"${MINIO_ENDPOINT}\"}"
+          if [ "${{ inputs.delete_data }}" = "true" ]; then
+            terraform destroy -input=false -auto-approve -var-file="envs/${TF_ENV}.tfvars"
+          else
+            # The volume is a dependency of the db container, so targeting the
+            # containers and the network leaves the volume (and its state) in place.
+            terraform destroy -input=false -auto-approve -var-file="envs/${TF_ENV}.tfvars" \
+              -target=module.service -target=docker_network.this
+          fi
+
+      - name: Remaining containers
+        if: always()
+        run: |
+          echo "### ${TF_ENV}" >> "$GITHUB_STEP_SUMMARY"
+          left=$(docker ps -a --filter "name=quiz-${TF_ENV}-" --format '{{.Names}}')
+          vol=$(docker volume ls --filter "name=quiz-${TF_ENV}-db-data" --format '{{.Name}}')
+          echo "Database volume: ${vol:-deleted}" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -n "$left" ]; then echo "Still present: $left" | tee -a "$GITHUB_STEP_SUMMARY"; else echo "No quiz-${TF_ENV}-* containers left." | tee -a "$GITHUB_STEP_SUMMARY"; fi
+
+  remove-state-backend:
+    needs: destroy
+    if: inputs.environment == 'all' && inputs.remove_state_backend && needs.destroy.result == 'success'
+    runs-on: [self-hosted, quiz-deploy]
+    steps:
+      - name: Remove MinIO and its data
+        run: |
+          docker rm -f quiz-tfstate-minio || true
+          docker volume rm quiz-tfstate-minio || true
