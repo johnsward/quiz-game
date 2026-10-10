@@ -1,0 +1,31 @@
+# Self-hosted GitHub Actions runner, so workflows can deploy the quiz game
+# (the root docker-compose.yml) onto this machine's Docker daemon.
+#
+# Kept as a separate Compose project so redeploying the app never touches
+# the runner.
+#
+# docker-outside-of-docker: the runner drives the HOST daemon through the
+# mounted docker.sock. Relative bind mounts in a CI job's `docker compose`
+# call are resolved inside this container and then sent to the host daemon
+# as absolute paths, so RUNNER_WORK_DIR (where actions/checkout puts the
+# repo) must be a real host path mounted at the SAME path in the container.
+# Set it in infra/runner/.env.
+
+name: quiz-infra
+
+services:
+  github-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: quiz-game/github-runner:latest
+    container_name: quiz-github-runner
+    restart: unless-stopped
+    environment:
+      GITHUB_REPO_URL: "${GITHUB_REPO_URL:?set in infra/runner/.env}"
+      GITHUB_RUNNER_TOKEN: "${GITHUB_RUNNER_TOKEN:?set in infra/runner/.env}"
+      RUNNER_NAME: "${RUNNER_NAME:-quiz-runner}"
+      RUNNER_WORK_DIR: "${RUNNER_WORK_DIR:?set in infra/runner/.env to an absolute host path}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${RUNNER_WORK_DIR}:${RUNNER_WORK_DIR}"

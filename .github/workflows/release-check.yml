@@ -1,0 +1,29 @@
+name: Release version
+
+# Pull requests into main must carry exactly one label that says how to bump the
+# version: release:major | release:minor | release:patch. Make "Release version"
+# a required status check on main.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - name: Validate release label
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          version="$(bash scripts/next-version.sh "$PR_LABELS")"
+          echo "Merging this PR will release v${version}" | tee -a "$GITHUB_STEP_SUMMARY"

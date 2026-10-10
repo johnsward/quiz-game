@@ -1,0 +1,38 @@
+name: Release
+
+# Publishes a tagged GitHub release when a pull request is merged into main. The
+# version comes from the PR's release:* label (see scripts/next-version.sh). It does
+# not wait for the prod deployment.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].number // empty')"
+          if [ -z "$pr" ]; then
+            echo "::warning::No pull request found for ${GITHUB_SHA} (direct push?); skipping release."
+            exit 0
+          fi
+          labels="$(gh pr view "$pr" --json labels --jq '[.labels[].name] | join(",")')"
+          version="$(bash scripts/next-version.sh "$labels")"
+          gh release create "v${version}" --target "$GITHUB_SHA" --title "v${version}" --generate-notes
+          echo "Released v${version} (PR #${pr})" >> "$GITHUB_STEP_SUMMARY"

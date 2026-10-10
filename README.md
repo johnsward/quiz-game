@@ -139,3 +139,24 @@ Add an entry to `frontend/src/data/questions.ts`:
   explanation: 'The real story, shown after the player answers.',
 }
 ```
+
+## DevOps pipeline (dev → test → prod)
+
+Three environments run locally in Docker, provisioned by Terraform and deployed by GitHub Actions on a self-hosted runner. See [docs/architecture.md](docs/architecture.md).
+
+| Env  | Branch | URL                   | Gate                    |
+| ---- | ------ | --------------------- | ----------------------- |
+| dev  | `dev`  | http://localhost:8081 | auto                    |
+| test | `test` | http://localhost:8082 | auto + integration test |
+| prod | `main` | http://localhost:8080 | manual approval         |
+
+The ports are defaults, declared as `frontend_host_port` in `infra/envs/<env>.tfvars`; change them there (other tunables are in `infra/variables.tf`).
+
+### Setup
+Branches, GitHub environments and secrets, the self-hosted runner, GHCR visibility and troubleshooting are all covered step by step in **[infra/README.md](infra/README.md)**.
+
+### Quality & security automation
+oxlint, typecheck, tests, build, migration compatibility check, Trivy image scan, gitleaks, dependency review, CodeQL, `npm audit`, Dependabot.
+
+### Terraform layout
+One root configuration in `infra/` serves every environment. Per-environment values live in `infra/envs/<env>.tfvars` (name and host port); the state key is passed at `init` (`-backend-config="key=<env>/terraform.tfstate"`). Adding an environment = one new `.tfvars` file. The three containers are defined once in `locals.services` and created by a single `for_each` over `infra/modules/service`.
