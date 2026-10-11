@@ -1,5 +1,5 @@
 # ---- Build: compile TypeScript ----
-FROM --platform=$BUILDPLATFORM node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM node:25-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -8,13 +8,13 @@ COPY src ./src
 RUN npm run build
 
 # ---- Production dependencies (pure JS: express, pg, ... -- no native addons) ----
-FROM --platform=$BUILDPLATFORM node:22-alpine AS deps
+FROM --platform=$BUILDPLATFORM node:25-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # ---- Runtime: production dependencies + compiled output only ----
-FROM node:22-alpine
+FROM node:25-alpine
 ENV NODE_ENV=production
 # The runtime only needs `node`; drop the npm/corepack bundled in the base image
 # (their vendored packages are the source of most image CVEs).
