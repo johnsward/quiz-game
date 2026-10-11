@@ -1,8 +1,5 @@
 name: Release
 
-# Publishes a tagged GitHub release when a pull request is merged into main. The
-# version comes from the PR's release:* label (see scripts/next-version.sh). It does
-# not wait for the prod deployment.
 on:
   push:
     branches: [main]

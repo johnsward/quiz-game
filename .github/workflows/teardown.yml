@@ -1,10 +1,5 @@
 name: Teardown
 
-# Manually shuts down an environment (or all of them) with terraform destroy.
-# By default it removes the containers and the network but KEEPS the database
-# volume (the data); tick delete_data to remove the volume as well.
-# Run it from Actions -> Teardown -> Run workflow. prod still asks for approval
-# through its GitHub Environment.
 on:
   workflow_dispatch:
     inputs:
@@ -48,7 +43,6 @@ jobs:
       matrix:
         env: ${{ fromJSON(needs.select.outputs.envs) }}
     environment: ${{ matrix.env }}
-    # Same queue as the deploy workflow, so a teardown never runs during a deploy.
     concurrency:
       group: deploy-${{ matrix.env == 'prod' && 'main' || matrix.env }}
       cancel-in-progress: false
@@ -57,7 +51,6 @@ jobs:
       MINIO_ENDPOINT: http://host.docker.internal:9000
       AWS_ACCESS_KEY_ID: ${{ secrets.TFSTATE_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.TFSTATE_SECRET_KEY }}
-      # destroy needs values for the required variables, but does not use them
       TF_VAR_db_password: unused
       TF_VAR_frontend_image: unused
       TF_VAR_backend_image: unused

@@ -1,8 +1,5 @@
 name: Release version
 
-# Pull requests into main must carry exactly one label that says how to bump the
-# version: release:major | release:minor | release:patch. Make "Release version"
-# a required status check on main.
 on:
   pull_request:
     branches: [main]
