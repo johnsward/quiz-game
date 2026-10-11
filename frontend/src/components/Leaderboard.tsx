@@ -83,7 +83,7 @@ export function Leaderboard({ score, correct }: LeaderboardProps) {
 
       {submitted ? (
         <p className="leaderboard__note" role="status">
-          Filed. You're <strong>No. {submitted.rank}</strong> on the board.
+          Filed. You're <strong>No. {submitted.rank}</strong> on the board!
         </p>
       ) : (
         <form className="byline" onSubmit={handleSubmit}>
