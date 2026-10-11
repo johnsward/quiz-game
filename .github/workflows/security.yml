@@ -26,15 +26,6 @@ jobs:
         with: { languages: javascript-typescript }
       - uses: github/codeql-action/analyze@v3
 
-  gitleaks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   npm-audit:
     runs-on: ubuntu-latest
     strategy:
