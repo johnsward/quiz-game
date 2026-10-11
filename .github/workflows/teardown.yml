@@ -55,7 +55,7 @@ jobs:
       TF_VAR_frontend_image: unused
       TF_VAR_backend_image: unused
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v4
         with: { terraform_version: 1.12.2 }
 
