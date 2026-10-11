@@ -2,7 +2,6 @@ import pg from 'pg';
 import { loadConfig } from './config.js';
 import { migrate } from './migrate.js';
 
-// Standalone entry point: `npm run migrate`. The server also migrates on startup.
 const pool = new pg.Pool({ connectionString: loadConfig().databaseUrl });
 try {
   const applied = await migrate(pool);

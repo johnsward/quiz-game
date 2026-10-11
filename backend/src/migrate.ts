@@ -9,10 +9,6 @@ const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations/', import.meta.url))
 /** Arbitrary constant so only one process runs migrations at a time. */
 const MIGRATION_LOCK_ID = 7_310_442;
 
-/**
- * Applies any `.sql` files in `migrations/` that haven't run yet, in filename order.
- * Each migration runs in its own transaction. Returns the names of the applied files.
- */
 export async function migrate(pool: Pool, log: (message: string) => void = console.log): Promise<string[]> {
   const client = await pool.connect();
   try {
@@ -51,7 +47,6 @@ export async function migrate(pool: Pool, log: (message: string) => void = conso
   }
 }
 
-/** Retries a trivial query until the database accepts connections. */
 export async function waitForDatabase(pool: Pool, attempts = 10, delayMs = 1000): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {

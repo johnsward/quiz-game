@@ -1,7 +1,6 @@
 export interface Config {
   port: number;
   databaseUrl: string;
-  /** Trust the first proxy hop's X-Forwarded-For header (needed behind nginx). */
   trustProxy: boolean;
 }
 
