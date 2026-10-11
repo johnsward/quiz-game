@@ -110,8 +110,14 @@ jobs:
 
       - name: Ensure state backend (MinIO)
         run: |
-          if ! docker inspect quiz-tfstate-minio >/dev/null 2>&1; then
+          # Recreate the container if it's missing or the credentials changed.
+          # The data is in the volume, so it survives.
+          creds=$(printf '%s:%s' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" | sha256sum | cut -c1-16)
+          current=$(docker container inspect -f '{{ index .Config.Labels "creds" }}' quiz-tfstate-minio 2>/dev/null || true)
+          if [ "$current" != "$creds" ]; then
+            docker rm -f quiz-tfstate-minio >/dev/null 2>&1 || true
             docker run -d --name quiz-tfstate-minio --restart unless-stopped --user root \
+              --label creds="$creds" \
               -p 127.0.0.1:9000:9000 -p 127.0.0.1:9001:9001 \
               -v quiz-tfstate-minio:/data \
               -e MINIO_ROOT_USER="$AWS_ACCESS_KEY_ID" -e MINIO_ROOT_PASSWORD="$AWS_SECRET_ACCESS_KEY" \
@@ -120,7 +126,13 @@ jobs:
             docker start quiz-tfstate-minio >/dev/null
           fi
           for i in $(seq 1 30); do
-            curl -sf "${MINIO_ENDPOINT}/minio/health/ready" && break; sleep 1
+            curl -sf "${MINIO_ENDPOINT}/minio/health/ready" >/dev/null && break
+            if [ "$i" -eq 30 ]; then
+              echo "::error::MinIO did not become ready"
+              docker logs --tail 20 quiz-tfstate-minio
+              exit 1
+            fi
+            sleep 1
           done
           export MC_HOST_local="http://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@host.docker.internal:9000"
           mc() { docker run --rm -e MC_HOST_local chainguard/minio-client:latest "$@"; }
