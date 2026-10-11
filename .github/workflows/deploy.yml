@@ -1,0 +1,149 @@
+name: Deploy
+
+# Runs on the self-hosted runner (it has access to the local Docker daemon and MinIO).
+on:
+  push:
+    branches: [dev, test, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend_built: ${{ steps.need.outputs.frontend }}
+      backend_built: ${{ steps.need.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
+        id: f
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            frontend: ['frontend/**']
+            backend: ['backend/**']
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Multi-arch images: the pulling Docker daemon picks the matching variant.
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Decide what to build
+        id: need
+        run: |
+          for svc in frontend backend; do
+            changed=false
+            [ "${{ github.event_name }}" = "workflow_dispatch" ] && changed=true
+            if [ "$svc" = frontend ] && [ "${{ steps.f.outputs.frontend }}" = "true" ]; then changed=true; fi
+            if [ "$svc" = backend ] && [ "${{ steps.f.outputs.backend }}" = "true" ]; then changed=true; fi
+            docker buildx imagetools inspect "${IMAGE_PREFIX}/${svc}:${{ github.ref_name }}" >/dev/null 2>&1 || changed=true
+            echo "${svc}=${changed}" >> "$GITHUB_OUTPUT"
+          done
+      - name: Build and push frontend
+        if: steps.need.outputs.frontend == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/frontend:${{ github.ref_name }}
+      - name: Build and push backend
+        if: steps.need.outputs.backend == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/backend:${{ github.ref_name }}
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, quiz-deploy]
+    environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name }}
+    env:
+      TF_ENV: ${{ github.ref_name == 'main' && 'prod' || github.ref_name }}
+      MINIO_ENDPOINT: http://host.docker.internal:9000
+      HOST_ALIAS: host.docker.internal
+      AWS_ACCESS_KEY_ID: ${{ secrets.TFSTATE_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TFSTATE_SECRET_KEY }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v4
+        with: { terraform_version: 1.12.2 }
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image tags
+        run: |
+          cur() { docker inspect --format '{{.Config.Image}}' "quiz-${TF_ENV}-$1" 2>/dev/null || true; }
+          F=$(cur frontend); B=$(cur backend)
+          # Built in this run -> that SHA. Otherwise keep what is running; if
+          # nothing is running, reuse the latest build for this branch.
+          if [ "${{ needs.build.outputs.frontend_built }}" = "true" ]; then F="${IMAGE_PREFIX}/frontend:${{ github.sha }}"
+          elif [ -z "$F" ]; then F="${IMAGE_PREFIX}/frontend:${{ github.ref_name }}"; fi
+          if [ "${{ needs.build.outputs.backend_built }}" = "true" ]; then B="${IMAGE_PREFIX}/backend:${{ github.sha }}"
+          elif [ -z "$B" ]; then B="${IMAGE_PREFIX}/backend:${{ github.ref_name }}"; fi
+          echo "TF_VAR_frontend_image=$F" >> "$GITHUB_ENV"
+          echo "TF_VAR_backend_image=$B" >> "$GITHUB_ENV"
+          echo "frontend=$F backend=$B" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Ensure state backend (MinIO)
+        run: |
+          if ! docker inspect quiz-tfstate-minio >/dev/null 2>&1; then
+            docker run -d --name quiz-tfstate-minio --restart unless-stopped --user root \
+              -p 127.0.0.1:9000:9000 -p 127.0.0.1:9001:9001 \
+              -v quiz-tfstate-minio:/data \
+              -e MINIO_ROOT_USER="$AWS_ACCESS_KEY_ID" -e MINIO_ROOT_PASSWORD="$AWS_SECRET_ACCESS_KEY" \
+              chainguard/minio:latest server /data --console-address :9001
+          else
+            docker start quiz-tfstate-minio >/dev/null
+          fi
+          for i in $(seq 1 30); do
+            curl -sf "${MINIO_ENDPOINT}/minio/health/ready" && break; sleep 1
+          done
+          export MC_HOST_local="http://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@host.docker.internal:9000"
+          mc() { docker run --rm -e MC_HOST_local chainguard/minio-client:latest "$@"; }
+          mc mb --ignore-existing local/tfstate
+          mc version enable local/tfstate
+
+      - name: Terraform init / plan / apply
+        working-directory: infra
+        run: |
+          terraform init -input=false -reconfigure \
+            -backend-config="key=${TF_ENV}/terraform.tfstate" \
+            -backend-config="endpoints={s3=\"${MINIO_ENDPOINT}\"}"
+          terraform plan -input=false -var-file="envs/${TF_ENV}.tfvars" -out=tfplan
+          terraform apply -input=false tfplan
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh "$(terraform -chdir=infra output -raw frontend_url | sed "s/localhost/${HOST_ALIAS}/")"
+
+      - name: Integration test (test env only)
+        if: env.TF_ENV == 'test'
+        run: bash scripts/integration-test.sh "$(terraform -chdir=infra output -raw frontend_url | sed "s/localhost/${HOST_ALIAS}/")"
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          for s in frontend backend db; do echo "== $s =="; docker logs --tail 50 "quiz-${TF_ENV}-$s" || true; done
